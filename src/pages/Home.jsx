@@ -28,7 +28,7 @@ const archiveImages = {
 
 // Use the family photograph for the hero; /public/fela-3.jpg is deliberately not used
 // because its reuse rights have not been established.
-const heroImage = "../../public/fela-3.jpg";
+const heroImage = "/fela-3.jpg";
 
 /* ------------------------------------------------------------------ */
 /* Layout helpers                                                       */
@@ -330,18 +330,12 @@ export default function Home() {
         {/* Full-width hero image */}
         <img
           src={heroImage}
-          alt="The Ransome-Kuti family, including Fela as a child"
+          alt="Fela Anikulapo-Kuti"
           loading="eager"
           fetchPriority="high"
           decoding="async"
           className="absolute inset-0 z-0 block h-full w-full object-cover"
-          style={{
-            objectPosition: HERO_POSITION || "center center",
-          }}
-          onError={(event) => {
-            event.currentTarget.onerror = null;
-            event.currentTarget.src = archiveImages.shrine;
-          }}
+          style={{ objectPosition: HERO_POSITION }}
         />
 
         {/* Dark overlays */}
