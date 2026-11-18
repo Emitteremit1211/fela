@@ -1,0 +1,28 @@
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+.page-container {
+  width: min(100% - 80px, 1440px);
+  margin-inline: auto;
+}
+
+.section-padding {
+  padding-block: 100px;
+}
+
+.display-font {
+  font-family: "Cormorant Garamond", Georgia, serif;
+}
+
+@media (max-width: 768px) {
+  .page-container {
+    width: min(100% - 40px, 1440px);
+  }
+
+  .section-padding {
+    padding-block: 65px;
+  }
+}
