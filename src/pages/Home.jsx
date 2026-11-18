@@ -10,7 +10,25 @@ import {
   Ticket,
 } from "lucide-react";
 
-import heroImage from "/fela-3.jpg";
+// Only use images whose Wikimedia Commons records identify them as public domain.
+// Family photograph: public domain in Nigeria. Shrine photographs: released worldwide.
+const archiveImages = {
+  family:
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Family_Ransome_Kuti_c1940.jpg",
+
+  shrine:
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Fela_New_Shrine,_Lagos.jpg",
+
+  shrineView:
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Fela_New_Shrine,_Lagos_02.jpg",
+
+  legacy:
+    "https://commons.wikimedia.org/wiki/Special:FilePath/Front_View_of_Fela_Shrine.jpg",
+};
+
+// Use the family photograph for the hero; /public/fela-3.jpg is deliberately not used
+// because its reuse rights have not been established.
+const heroImage = "../../public/fela-3.jpg";
 
 /* ------------------------------------------------------------------ */
 /* Layout helpers                                                       */
@@ -74,24 +92,32 @@ const exhibitionThemes = [
   {
     number: "01",
     title: "The Family & The Making",
+    image: archiveImages.family,
+    imageAlt: "The Ransome-Kuti family in an early 1940s photograph",
     description:
       "Explore the family history, formative experiences and influences that helped shape Fela's life and artistic vision.",
   },
   {
     number: "02",
     title: "The Sound of Afrobeat",
+    image: archiveImages.shrine,
+    imageAlt: "The New Afrika Shrine in Lagos",
     description:
       "Discover the development of Afrobeat, the musicians and collaborators behind its sound, and its influence across generations.",
   },
   {
     number: "03",
     title: "Kalakuta & The Shrine",
+    image: archiveImages.shrineView,
+    imageAlt: "Another exterior view of the New Afrika Shrine in Lagos",
     description:
       "Step into the cultural and political world of Kalakuta Republic and the Afrika Shrine, central spaces in Fela's life and work.",
   },
   {
     number: "04",
     title: "The Image & The Legacy",
+    image: archiveImages.legacy,
+    imageAlt: "Front view of the Afrika Shrine in Lagos",
     description:
       "Encounter the photography, artwork, performances and visual language that helped make Fela an enduring cultural figure.",
   },
@@ -136,20 +162,33 @@ const timeline = [
   },
 ];
 
-// Swap each src for a different photo when you have more images
 const galleryTiles = [
   {
-    src: heroImage,
-    caption: "Portraits & Performance",
-    position: "50% 20%",
+    src: archiveImages.family,
+    alt: "The Ransome-Kuti family, including Fela as a child",
+    caption: "Family & Early Life",
+    position: "50% 22%",
     span: "col-span-2 row-span-2",
   },
-  { src: heroImage, caption: "The Shrine", position: "15% 50%", span: "" },
-  { src: heroImage, caption: "Archive & Objects", position: "85% 60%", span: "" },
   {
-    src: heroImage,
-    caption: "Film & Sound",
-    position: "50% 85%",
+    src: archiveImages.shrine,
+    alt: "Exterior of the New Afrika Shrine in Lagos",
+    caption: "The Shrine",
+    position: "50% 50%",
+    span: "",
+  },
+  {
+    src: archiveImages.legacy,
+    alt: "Front view of the New Afrika Shrine in Lagos",
+    caption: "The Shrine & Its Legacy",
+    position: "50% 40%",
+    span: "",
+  },
+  {
+    src: archiveImages.family,
+    alt: "The Ransome-Kuti family in an early 1940s photograph",
+    caption: "Family & History",
+    position: "50% 42%",
     span: "col-span-2",
   },
 ];
@@ -239,9 +278,8 @@ function Eyebrow({ children, tone = "dark" }) {
     <div className="flex items-center gap-3 mb-6">
       <span className="h-px w-8 bg-amber-700" />
       <p
-        className={`text-[10px] uppercase tracking-[0.26em] ${
-          tone === "dark" ? "text-neutral-500" : "text-neutral-400"
-        }`}
+        className={`text-[10px] uppercase tracking-[0.26em] ${tone === "dark" ? "text-neutral-500" : "text-neutral-400"
+          }`}
       >
         {children}
       </p>
@@ -279,22 +317,39 @@ export default function Home() {
   return (
     <div className="bg-white text-neutral-900 overflow-hidden">
       {/* HERO */}
-      <section className="relative isolate flex items-end bg-neutral-950 text-white min-h-[640px] h-[calc(100svh-72px)] xl:h-[calc(100svh-96px)] max-h-[920px]">
-        <motion.img
+
+      <section
+        className="relative isolate left-1/2 flex min-h-[680px] h-[calc(100svh-72px)] xl:h-[calc(100svh-96px)] max-h-[980px] w-[100vw] max-w-[100vw] -translate-x-1/2 items-end overflow-hidden bg-neutral-950 text-white"
+        style={{
+          marginLeft: "calc(50% - 50vw)",
+          marginRight: "calc(50% - 50vw)",
+          width: "100vw",
+          maxWidth: "100vw",
+        }}
+      >
+        {/* Full-width hero image */}
+        <img
           src={heroImage}
-          alt="Fela Anikulapo-Kuti"
-          initial={{ scale: 1.12 }}
-          animate={{ scale: 1 }}
-          transition={{ duration: 2.6, ease: "easeOut" }}
-          className="absolute inset-0 -z-10 h-full w-full object-cover grayscale-[0.25]"
-          style={{ objectPosition: HERO_POSITION }}
+          alt="The Ransome-Kuti family, including Fela as a child"
+          loading="eager"
+          fetchPriority="high"
+          decoding="async"
+          className="absolute inset-0 z-0 block h-full w-full object-cover"
+          style={{
+            objectPosition: HERO_POSITION || "center center",
+          }}
+          onError={(event) => {
+            event.currentTarget.onerror = null;
+            event.currentTarget.src = archiveImages.shrine;
+          }}
         />
 
-        {/* Overlays for text legibility */}
-        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-black/80 via-black/35 to-transparent" />
-        <div className="absolute inset-0 -z-10 bg-gradient-to-t from-black/85 via-black/10 to-black/25" />
+        {/* Dark overlays */}
+        <div className="absolute inset-0 z-10 bg-gradient-to-r from-black/75 via-black/30 to-black/5 pointer-events-none" />
+        <div className="absolute inset-0 z-10 bg-gradient-to-t from-black/85 via-black/10 to-black/20 pointer-events-none" />
 
-        <div className={`${container} relative w-full pb-14 sm:pb-20 lg:pb-24`}>
+        {/* Hero content */}
+        <div className="relative z-20 w-full px-6 sm:px-10 lg:px-16 xl:px-20 pb-14 sm:pb-20 lg:pb-24">
           <motion.div
             initial="hidden"
             animate="visible"
@@ -307,11 +362,13 @@ export default function Home() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
               </span>
+
               <span className="text-[10px] uppercase tracking-[0.22em] text-white/90">
                 {getStatus()}
               </span>
             </div>
 
+            {/* Heading */}
             <h1 className="display-font text-[40px] min-[420px]:text-5xl sm:text-7xl md:text-8xl lg:text-[104px] leading-[0.9] tracking-[-0.04em] font-medium">
               Fela
               <br />
@@ -320,8 +377,9 @@ export default function Home() {
 
             <div className="flex items-center gap-4 mt-6">
               <span className="h-px w-12 bg-amber-600" />
+
               <p className="display-font text-2xl sm:text-4xl md:text-5xl italic text-white/90">
-                The Retrospective
+                A Retrospective
               </p>
             </div>
 
@@ -331,31 +389,37 @@ export default function Home() {
               and cultural figures.
             </p>
 
+            {/* Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 mt-9">
               <Cta to="/visit" variant="light">
                 Plan Your Visit
               </Cta>
+
               <Cta to="/exhibition" variant="outlineLight">
                 Explore the Exhibition
               </Cta>
             </div>
           </motion.div>
 
-          {/* Hero side panel (large screens) */}
+          {/* Location panel */}
           <div className="hidden xl:block absolute bottom-24 right-10 border-l border-white/30 pl-6 text-white/80">
             <p className="text-[10px] uppercase tracking-[0.22em] text-white/55">
               Institute of Contemporary
               <br />
               African Art and Film
             </p>
-            <p className="display-font text-3xl mt-3 text-white">Ilorin</p>
+
+            <p className="display-font text-3xl mt-3 text-white">
+              Ilorin
+            </p>
+
             <p className="text-xs mt-2 tracking-wide">
               26 Oct – 31 Dec 2026 · Free
             </p>
           </div>
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 h-px bg-white/20" />
+        <div className="absolute bottom-0 left-0 right-0 z-30 h-px bg-white/20" />
       </section>
 
       {/* KEYWORD TICKER */}
@@ -420,7 +484,7 @@ export default function Home() {
               </p>
 
               <p className="mt-6 text-sm sm:text-base leading-8 text-neutral-600">
-                Fela Anikulapo-Kuti: The Retrospective brings together the
+                Fela Anikulapo-Kuti: A Retrospective brings together the
                 stories, sounds, images and objects that illuminate his
                 extraordinary life. From his family history and the
                 development of Afrobeat to his collaborators, performances
@@ -471,10 +535,25 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.6, delay: index * 0.08 }}
-                className={`group relative py-9 sm:py-11 border-b border-neutral-700 ${
-                  index % 2 === 0 ? "md:pr-12 md:border-r" : "md:pl-12"
-                }`}
+                className={`group relative py-9 sm:py-11 border-b border-neutral-700 ${index % 2 === 0 ? "md:pr-12 md:border-r" : "md:pl-12"
+                  }`}
               >
+                <div className="relative mb-7 h-48 sm:h-56 overflow-hidden bg-neutral-800">
+                  <img
+                    src={theme.image}
+                    alt={theme.imageAlt}
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                    className="h-full w-full object-cover grayscale-[0.25] transition-transform duration-700 group-hover:scale-105"
+                    onError={(event) => {
+                      event.currentTarget.onerror = null;
+                      event.currentTarget.src = archiveImages.shrine;
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/35 to-transparent" />
+                </div>
+
                 <span className="absolute top-0 left-0 h-px w-0 bg-amber-600 transition-all duration-500 group-hover:w-full" />
 
                 <p className="text-xs tracking-[0.18em] text-amber-600">
@@ -526,14 +605,12 @@ export default function Home() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-60px" }}
                   transition={{ duration: 0.6 }}
-                  className={`relative pl-10 md:pl-0 pb-12 last:pb-0 md:w-1/2 ${
-                    left ? "md:pr-14 md:text-right" : "md:ml-auto md:pl-14"
-                  }`}
+                  className={`relative pl-10 md:pl-0 pb-12 last:pb-0 md:w-1/2 ${left ? "md:pr-14 md:text-right" : "md:ml-auto md:pl-14"
+                    }`}
                 >
                   <span
-                    className={`absolute top-2 left-0 h-[15px] w-[15px] rounded-full border-2 border-amber-700 bg-neutral-100 ${
-                      left ? "md:left-auto md:-right-[8px]" : "md:-left-[8px]"
-                    }`}
+                    className={`absolute top-2 left-0 h-[15px] w-[15px] rounded-full border-2 border-amber-700 bg-neutral-100 ${left ? "md:left-auto md:-right-[8px]" : "md:-left-[8px]"
+                      }`}
                   />
 
                   <p className="display-font text-4xl sm:text-5xl text-amber-700 leading-none">
@@ -543,9 +620,8 @@ export default function Home() {
                     {item.title}
                   </h3>
                   <p
-                    className={`mt-3 text-sm leading-7 text-neutral-600 ${
-                      left ? "md:ml-auto" : ""
-                    } max-w-md`}
+                    className={`mt-3 text-sm leading-7 text-neutral-600 ${left ? "md:ml-auto" : ""
+                      } max-w-md`}
                   >
                     {item.text}
                   </p>
@@ -587,9 +663,16 @@ export default function Home() {
               >
                 <img
                   src={tile.src}
-                  alt={tile.caption}
-                  className="absolute inset-0 h-full w-full object-cover grayscale-[0.4] transition-transform duration-700 group-hover:scale-105"
+                  alt={tile.alt}
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  className="absolute inset-0 h-full w-full object-cover grayscale-[0.3] transition-transform duration-700 group-hover:scale-105"
                   style={{ objectPosition: tile.position }}
+                  onError={(event) => {
+                    event.currentTarget.onerror = null;
+                    event.currentTarget.src = archiveImages.shrine;
+                  }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
                 <p className="absolute bottom-4 left-4 right-4 text-[10px] sm:text-xs uppercase tracking-[0.2em] text-white">
@@ -610,19 +693,26 @@ export default function Home() {
               className="relative min-h-[340px] sm:min-h-[480px] bg-neutral-300 overflow-hidden"
             >
               <img
-                src={heroImage}
-                alt="Archival image used as a temporary exhibition visual"
+                src={archiveImages.shrineView}
+                alt="Exterior of the New Afrika Shrine in Lagos"
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
                 className="absolute inset-0 w-full h-full object-cover grayscale"
-                style={{ objectPosition: "60% 30%" }}
+                style={{ objectPosition: "50% 20%" }}
+                onError={(event) => {
+                  event.currentTarget.onerror = null;
+                  event.currentTarget.src = archiveImages.shrine;
+                }}
               />
               <div className="absolute inset-0 bg-black/35" />
 
               <div className="absolute bottom-7 left-7 right-7 text-white">
                 <p className="text-[10px] uppercase tracking-[0.2em] text-white/75">
-                  A connection to the city
+                  The New Afrika Shrine
                 </p>
                 <p className="display-font text-4xl sm:text-5xl mt-2">
-                  Ilorin, 1971
+                  A place of music and culture
                 </p>
               </div>
             </motion.div>
@@ -761,7 +851,7 @@ export default function Home() {
             </h2>
 
             <p className="max-w-xl mx-auto text-sm sm:text-base text-neutral-400 leading-8 mt-7">
-              Visit Fela Anikulapo-Kuti: The Retrospective at the Institute of
+              Visit Fela Anikulapo-Kuti: A Retrospective at the Institute of
               Contemporary African Art and Film, Ilorin. Admission is free.
             </p>
 
@@ -805,6 +895,41 @@ export default function Home() {
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* IMAGE CREDITS */}
+      <section className="bg-neutral-100 border-t border-neutral-300 py-10">
+        <div className={container}>
+          <p className="text-[10px] uppercase tracking-[0.22em] text-neutral-500 mb-4">
+            Public-domain image credits
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-3 text-[11px] leading-6 text-neutral-600">
+            <p>
+              Family Ransome-Kuti, c. 1940 — unknown photographer; public domain in Nigeria.
+              <a className="underline underline-offset-2 ml-1" href="https://commons.wikimedia.org/wiki/File:Family_Ransome_Kuti_c1940.jpg" target="_blank" rel="noreferrer">Source</a>
+            </p>
+
+            <p>
+              Fela New Shrine, Lagos — Kaizenify; released into the public domain worldwide.
+              <a className="underline underline-offset-2 ml-1" href="https://commons.wikimedia.org/wiki/File:Fela_New_Shrine,_Lagos.jpg" target="_blank" rel="noreferrer">Source</a>
+            </p>
+
+            <p>
+              Fela New Shrine, Lagos 02 — Kaizenify; released into the public domain worldwide.
+              <a className="underline underline-offset-2 ml-1" href="https://commons.wikimedia.org/wiki/File:Fela_New_Shrine,_Lagos_02.jpg" target="_blank" rel="noreferrer">Source</a>
+            </p>
+
+            <p>
+              Front View of Fela Shrine — Kaizenify; released into the public domain worldwide.
+              <a className="underline underline-offset-2 ml-1" href="https://commons.wikimedia.org/wiki/File:Front_View_of_Fela_Shrine.jpg" target="_blank" rel="noreferrer">Source</a>
+            </p>
+          </div>
+
+          <p className="mt-5 text-[10px] leading-5 text-neutral-500">
+            The family photograph is listed as public domain in Nigeria. The Shrine photographs were released into the public domain by their photographer. The organisers should retain these source records as part of their image-rights documentation.
+          </p>
         </div>
       </section>
     </div>
