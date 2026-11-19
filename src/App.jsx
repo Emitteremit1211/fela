@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
+import ScrollToTop from "./components/ScrollToTop";
+import WhatsAppButton from "./components/WhatsAppButton";
 
 import Home from "./pages/Home";
 import Exhibition from "./pages/Exhibition";
@@ -14,6 +16,8 @@ import Credits from "./pages/Credits";
 export default function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
+
       <Navbar />
 
       <main>
@@ -28,6 +32,8 @@ export default function App() {
       </main>
 
       <Footer />
+
+      <WhatsAppButton />
     </BrowserRouter>
   );
 }
