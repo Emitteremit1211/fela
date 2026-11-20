@@ -40,7 +40,7 @@ const credits = [
 
 const partnerLogos = [
   {
-    name: "Kwara State Government",
+    name: "Kwara state Ministry of communications",
     image: "/Kwara-State-Government-logo.jpg",
     type: "image",
   },

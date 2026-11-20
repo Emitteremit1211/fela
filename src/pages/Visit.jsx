@@ -23,6 +23,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 
+import { supabase } from "../lib/supabaseClient";
+
 const venue =
   "Institute of Contemporary African Art and Film, Ahmadu Bello Way, Ilorin, Kwara State, Nigeria";
 
@@ -33,10 +35,6 @@ const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURICompo
 const mapEmbedUrl = `https://www.google.com/maps?q=${encodeURIComponent(
   venue
 )}&output=embed`;
-
-// Set VITE_BOOKING_API_URL in your .env file when your backend endpoint is ready.
-// Example: VITE_BOOKING_API_URL=https://your-backend.com/api/bookings
-const BOOKING_API_URL = import.meta.env.VITE_BOOKING_API_URL || "";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
@@ -90,7 +88,7 @@ const visitorFAQs = [
   {
     question: "Can I take photographs inside the exhibition?",
     answer:
-      "Please check with the exhibition team at the venue for guidance on photography within the exhibition spaces.",
+      "Yes, visitors are welcome to take photographs inside the exhibition. However, eating and drinking are not permitted within the exhibition spaces.",
   },
   {
     question: "Is the venue accessible?",
@@ -135,6 +133,7 @@ const chapters = [
 ];
 
 const today = new Date();
+
 const minimumDate = [
   today.getFullYear(),
   String(today.getMonth() + 1).padStart(2, "0"),
@@ -231,7 +230,7 @@ function Hero() {
           >
             Step into the world of Fela Anikulapo-Kuti. Discover the music,
             the movement, the stories and the enduring legacy of one of
-            Africa's most influential cultural figures.
+            Africa&apos;s most influential cultural figures.
           </motion.p>
 
           <motion.div
@@ -347,7 +346,7 @@ function VisitDetails() {
 }
 
 /* --------------------------------------------------------------------------
-   BOOKING FORM
+   BOOKING FORM — CONNECTED TO SUPABASE
 --------------------------------------------------------------------------- */
 
 function BookingSection() {
@@ -398,15 +397,11 @@ function BookingSection() {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    if (!BOOKING_API_URL) {
-      setStatus("error");
-      setFeedback(
-        "The booking form is ready, but the booking service has not been connected yet. Please contact the exhibition team."
-      );
-      return;
-    }
-
-    if (formData.visitDate < minimumDate || formData.visitDate > maximumDate) {
+    if (
+      !formData.visitDate ||
+      formData.visitDate < minimumDate ||
+      formData.visitDate > maximumDate
+    ) {
       setStatus("error");
       setFeedback("Please select a valid date within the exhibition period.");
       return;
@@ -414,56 +409,65 @@ function BookingSection() {
 
     if (new Date(`${formData.visitDate}T12:00:00`).getDay() === 1) {
       setStatus("error");
-      setFeedback("The exhibition is closed on Mondays. Please select another date.");
+      setFeedback(
+        "The exhibition is closed on Mondays. Please select another date."
+      );
       return;
     }
 
-    if (visitorType === "Group" && Number(formData.visitorCount) < 2) {
+    const visitorCount = Number(formData.visitorCount);
+
+    if (
+      !Number.isInteger(visitorCount) ||
+      visitorCount < (visitorType === "Group" ? 2 : 1) ||
+      visitorCount > 500
+    ) {
       setStatus("error");
-      setFeedback("Please enter at least two visitors for a group booking.");
+      setFeedback(
+        visitorType === "Group"
+          ? "Please enter between 2 and 500 visitors for a group booking."
+          : "Please enter a valid number of visitors."
+      );
+      return;
+    }
+
+    if (visitorType === "Group" && !formData.organisation.trim()) {
+      setStatus("error");
+      setFeedback("Please enter your organisation or group name.");
       return;
     }
 
     setStatus("submitting");
     setFeedback("");
 
-    const payload = {
-      visitorType,
-      fullName: formData.fullName.trim(),
+    // These names and values match the existing visit_bookings table.
+    // Status is intentionally omitted so Supabase uses its Pending default.
+    const bookingPayload = {
+      visitor_type: visitorType,
+      full_name: formData.fullName.trim(),
       email: formData.email.trim(),
       phone: formData.phone.trim(),
-      visitDate: formData.visitDate,
-      visitorCount: Number(formData.visitorCount),
+      preferred_date: formData.visitDate,
+      visitor_count: visitorCount,
       organisation:
-        visitorType === "Group" ? formData.organisation.trim() : "",
-      contactRole:
-        visitorType === "Group" ? formData.contactRole.trim() : "",
-      notes: formData.notes.trim(),
-      admission: "Free",
-      source: "Website",
+        visitorType === "Group" ? formData.organisation.trim() || null : null,
+      contact_role:
+        visitorType === "Group" ? formData.contactRole.trim() || null : null,
+      notes: formData.notes.trim() || null,
     };
 
     try {
-      const response = await fetch(BOOKING_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      const { error } = await supabase
+        .from("visit_bookings")
+        .insert(bookingPayload);
 
-      const result = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(
-          result.message || "Your booking request could not be submitted."
-        );
+      if (error) {
+        throw error;
       }
 
       setStatus("success");
       setFeedback(
-        result.message ||
-          "Your booking request has been submitted successfully. The exhibition team will be in touch."
+        "Your booking request has been submitted successfully. The exhibition team will review your request and get in touch using the contact details you provided."
       );
 
       setFormData({
@@ -477,10 +481,12 @@ function BookingSection() {
         notes: "",
       });
     } catch (error) {
+      console.error("Visit booking submission error:", error);
+
       setStatus("error");
       setFeedback(
         error.message ||
-          "Something went wrong. Please try again or contact the exhibition team."
+          "Something went wrong while submitting your booking. Please try again or contact the exhibition team."
       );
     }
   };
@@ -571,9 +577,7 @@ function BookingSection() {
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* VISITOR TYPE */}
             <div>
-              <label className={labelClass}>
-                01. Type of visit *
-              </label>
+              <label className={labelClass}>01. Type of visit *</label>
 
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {["Individual", "Group"].map((type) => {
@@ -594,7 +598,9 @@ function BookingSection() {
                     >
                       <Icon
                         size={21}
-                        className={selected ? "!text-white" : "!text-neutral-600"}
+                        className={
+                          selected ? "!text-white" : "!text-neutral-600"
+                        }
                       />
 
                       <span
@@ -720,10 +726,7 @@ function BookingSection() {
                   </div>
 
                   <div>
-                    <label
-                      htmlFor="booking-role"
-                      className={labelClass}
-                    >
+                    <label htmlFor="booking-role" className={labelClass}>
                       Your role in the group
                     </label>
                     <input
@@ -771,10 +774,7 @@ function BookingSection() {
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="booking-count"
-                    className={labelClass}
-                  >
+                  <label htmlFor="booking-count" className={labelClass}>
                     Number of visitors *
                   </label>
                   <div className="relative">
@@ -845,9 +845,7 @@ function BookingSection() {
                   size={19}
                   className="mt-0.5 shrink-0 text-green-700"
                 />
-                <p className="text-sm leading-6 text-green-800">
-                  {feedback}
-                </p>
+                <p className="text-sm leading-6 text-green-800">{feedback}</p>
               </div>
             )}
 
@@ -860,9 +858,7 @@ function BookingSection() {
                   size={19}
                   className="mt-0.5 shrink-0 text-red-700"
                 />
-                <p className="text-sm leading-6 text-red-800">
-                  {feedback}
-                </p>
+                <p className="text-sm leading-6 text-red-800">{feedback}</p>
               </div>
             )}
 
@@ -881,10 +877,7 @@ function BookingSection() {
               {status === "submitting" ? (
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
               ) : (
-                <Send
-                  size={16}
-                  className="!text-white"
-                />
+                <Send size={16} className="!text-white" />
               )}
             </button>
 
@@ -1290,7 +1283,7 @@ function FinalCTA() {
         </p>
 
         <h2 className="display-font mx-auto max-w-4xl text-5xl leading-[1.05] sm:text-6xl md:text-7xl">
-          Fela's story is waiting
+          Fela&apos;s story is waiting
           <br />
           <span className="italic text-[#D9B78D]">
             to be experienced.

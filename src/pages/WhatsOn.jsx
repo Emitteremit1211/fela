@@ -1,5 +1,5 @@
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, MotionConfig } from "framer-motion";
 import {
@@ -11,53 +11,13 @@ import {
   Megaphone,
   Image as ImageIcon,
   CalendarCheck,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import { supabase } from "../lib/supabaseClient";
 
-/*
-  FRONTEND CONTENT
-
-  These arrays will later be replaced with information retrieved
-  from the admin panel.
-
-  EVENTS:
-  - Upcoming events appear under Upcoming Events.
-  - Events move to Past Events when their dates have passed.
-  - Only published events appear publicly.
-
-  ANNOUNCEMENTS:
-  - Announcements are managed separately from events.
-  - Only published announcements appear publicly.
-
-  Example event:
-  {
-    id: "event-1",
-    title: "An Evening of Fela",
-    description: "An evening celebrating Fela's music and legacy.",
-    image: "/event-image.jpg",
-    date: "2026-12-05",
-    time: "3:00 PM",
-    venue: "Institute of Contemporary African Art and Film",
-    published: true,
-    gallery: ["/photo-1.jpg", "/photo-2.jpg"]
-  }
-
-  Example announcement:
-  {
-    id: "announcement-1",
-    title: "Special Exhibition Notice",
-    description: "An important update for exhibition visitors.",
-    date: "2026-11-20",
-    image: "/announcement.jpg",
-    published: true
-  }
-*/
-
-const events = [];
-
-const announcements = [];
+const BUCKET = "whats-on-images";
 
 const venue =
   "Institute of Contemporary African Art and Film, Ahmadu Bello Way, Ilorin, Kwara State, Nigeria";
@@ -330,13 +290,6 @@ function EventCard({ event, past = false }) {
             <span>{event.venue}</span>
           </p>
         )}
-
-        {past && event.gallery?.length > 0 && (
-          <div className="mt-5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.13em] text-[#A77B45]">
-            <ImageIcon size={14} />
-            {event.gallery.length} event photographs
-          </div>
-        )}
       </div>
     </motion.article>
   );
@@ -397,7 +350,7 @@ function EmptyState({ type }) {
     past: {
       title: "Our event archive is growing.",
       description:
-        "Once events have taken place, they will be preserved here. You will be able to revisit previous programmes, read about what happened and explore photographs from those experiences.",
+        "Once events have taken place, they will be preserved here. You will be able to revisit previous programmes and explore photographs from those experiences.",
       icon: ImageIcon,
     },
     announcements: {
@@ -428,7 +381,25 @@ function EmptyState({ type }) {
   );
 }
 
-function WhatsOnContent({ upcomingEvents, pastEvents, announcements }) {
+function LoadingState() {
+  return (
+    <div className="flex flex-col items-center justify-center border border-neutral-200 px-6 py-16 text-center">
+      <Loader2 size={28} className="animate-spin text-[#A77B45]" />
+      <p className="mt-5 text-sm text-neutral-500">
+        Loading exhibition updates...
+      </p>
+    </div>
+  );
+}
+
+function WhatsOnContent({
+  upcomingEvents,
+  pastEvents,
+  announcements,
+  loading,
+  error,
+  onRetry,
+}) {
   const [activeTab, setActiveTab] = useState("upcoming");
 
   const activeTabInfo = tabs.find((tab) => tab.id === activeTab);
@@ -465,7 +436,6 @@ function WhatsOnContent({ upcomingEvents, pastEvents, announcements }) {
           </p>
         </motion.div>
 
-        {/* THE ONLY THREE TABS */}
         <div className="mt-12 border-b border-neutral-200">
           <div
             className="flex gap-2 overflow-x-auto"
@@ -510,7 +480,6 @@ function WhatsOnContent({ upcomingEvents, pastEvents, announcements }) {
           </div>
         </div>
 
-        {/* ACTIVE TAB EXPLANATION */}
         <div
           id={`panel-${activeTab}`}
           role="tabpanel"
@@ -529,12 +498,34 @@ function WhatsOnContent({ upcomingEvents, pastEvents, announcements }) {
             </div>
 
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-400">
-              {activeItems.length}{" "}
-              {activeItems.length === 1 ? "Item" : "Items"}
+              {loading
+                ? "Loading..."
+                : `${activeItems.length} ${
+                    activeItems.length === 1 ? "Item" : "Items"
+                  }`}
             </p>
           </div>
 
-          {activeItems.length > 0 ? (
+          {loading ? (
+            <div className="mt-10">
+              <LoadingState />
+            </div>
+          ) : error ? (
+            <div className="mt-10 border border-neutral-200 px-6 py-12 text-center">
+              <p className="text-sm text-neutral-600">
+                We couldn't load the latest exhibition updates.
+              </p>
+
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-5 inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#A77B45]"
+              >
+                <RefreshCw size={14} />
+                Try Again
+              </button>
+            </div>
+          ) : activeItems.length > 0 ? (
             <motion.div
               key={activeTab}
               variants={stagger}
@@ -622,9 +613,7 @@ function ExhibitionInformation() {
               <p className="text-[9px] font-semibold uppercase tracking-[0.17em] text-neutral-400">
                 Admission
               </p>
-              <p className="mt-2 text-sm text-neutral-900">
-                Free entry
-              </p>
+              <p className="mt-2 text-sm text-neutral-900">Free entry</p>
             </div>
 
             <div>
@@ -727,44 +716,153 @@ function FinalCTA() {
 }
 
 export default function WhatsOn() {
+  const [events, setEvents] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadWhatsOn() {
+      setLoading(true);
+      setError(false);
+
+      try {
+        const [eventsResult, announcementsResult] = await Promise.all([
+          supabase
+            .from("events")
+            .select(
+              "id, title, description, event_date, event_time, venue, storage_path, image_url, status, display_order"
+            )
+            .eq("status", "published")
+            .order("event_date", { ascending: true })
+            .order("display_order", { ascending: true }),
+
+          supabase
+            .from("announcements")
+            .select(
+              "id, title, description, announcement_date, storage_path, image_url, status"
+            )
+            .eq("status", "published")
+            .order("announcement_date", { ascending: false }),
+        ]);
+
+        if (eventsResult.error) throw eventsResult.error;
+        if (announcementsResult.error) throw announcementsResult.error;
+
+        const eventRows = eventsResult.data || [];
+        const announcementRows = announcementsResult.data || [];
+
+        const [eventItems, announcementItems] = await Promise.all([
+          Promise.all(
+            eventRows.map(async (item) => {
+              let image = item.image_url || "";
+
+              if (item.storage_path) {
+                const { data, error: imageError } = await supabase.storage
+                  .from(BUCKET)
+                  .createSignedUrl(item.storage_path, 3600);
+
+                if (!imageError && data?.signedUrl) {
+                  image = data.signedUrl;
+                }
+              }
+
+              return {
+                id: item.id,
+                title: item.title,
+                description: item.description || "",
+                image,
+                date: item.event_date,
+                time: item.event_time || "",
+                venue: item.venue || "",
+                published: item.status === "published",
+                displayOrder: item.display_order ?? 0,
+              };
+            })
+          ),
+
+          Promise.all(
+            announcementRows.map(async (item) => {
+              let image = item.image_url || "";
+
+              if (item.storage_path) {
+                const { data, error: imageError } = await supabase.storage
+                  .from(BUCKET)
+                  .createSignedUrl(item.storage_path, 3600);
+
+                if (!imageError && data?.signedUrl) {
+                  image = data.signedUrl;
+                }
+              }
+
+              return {
+                id: item.id,
+                title: item.title,
+                description: item.description || "",
+                image,
+                date: item.announcement_date,
+                published: item.status === "published",
+              };
+            })
+          ),
+        ]);
+
+        if (!isMounted) return;
+
+        setEvents(eventItems);
+        setAnnouncements(announcementItems);
+      } catch (err) {
+        console.error("What's On content could not be loaded:", err);
+
+        if (isMounted) {
+          setError(true);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadWhatsOn();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [reloadKey]);
+
   const { upcomingEvents, pastEvents, publishedAnnouncements } =
     useMemo(() => {
+      // Compare date-only strings to avoid timezone-related date shifts.
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const todayString = [
+        today.getFullYear(),
+        String(today.getMonth() + 1).padStart(2, "0"),
+        String(today.getDate()).padStart(2, "0"),
+      ].join("-");
 
       const publishedEvents = events.filter(
         (event) => event.published === true && event.date
       );
 
       const upcoming = publishedEvents
-        .filter((event) => {
-          const date = new Date(`${event.date}T12:00:00`);
-          return date >= today;
-        })
-        .sort(
-          (a, b) =>
-            new Date(`${a.date}T12:00:00`) -
-            new Date(`${b.date}T12:00:00`)
-        );
+        .filter((event) => event.date >= todayString)
+        .sort((a, b) => {
+          const dateCompare = a.date.localeCompare(b.date);
+          return dateCompare || a.displayOrder - b.displayOrder;
+        });
 
       const past = publishedEvents
-        .filter((event) => {
-          const date = new Date(`${event.date}T12:00:00`);
-          return date < today;
-        })
-        .sort(
-          (a, b) =>
-            new Date(`${b.date}T12:00:00`) -
-            new Date(`${a.date}T12:00:00`)
-        );
+        .filter((event) => event.date < todayString)
+        .sort((a, b) => b.date.localeCompare(a.date));
 
       const publishedNotices = announcements
         .filter((item) => item.published === true)
         .sort((a, b) => {
-          return (
-            new Date(`${b.date || "2000-01-01"}T12:00:00`) -
-            new Date(`${a.date || "2000-01-01"}T12:00:00`)
-          );
+          return (b.date || "").localeCompare(a.date || "");
         });
 
       return {
@@ -772,13 +870,11 @@ export default function WhatsOn() {
         pastEvents: past,
         publishedAnnouncements: publishedNotices,
       };
-    }, []);
+    }, [events, announcements]);
 
   return (
     <MotionConfig reducedMotion="user">
       <main className="overflow-hidden bg-white text-neutral-950">
-        {/* <Navbar /> */}
-
         <PageHero />
 
         <Introduction />
@@ -787,13 +883,14 @@ export default function WhatsOn() {
           upcomingEvents={upcomingEvents}
           pastEvents={pastEvents}
           announcements={publishedAnnouncements}
+          loading={loading}
+          error={error}
+          onRetry={() => setReloadKey((current) => current + 1)}
         />
 
         <ExhibitionInformation />
 
         <FinalCTA />
-
-        {/* <Footer /> */}
       </main>
     </MotionConfig>
   );

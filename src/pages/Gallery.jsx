@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, MotionConfig } from "framer-motion";
 import {
@@ -11,42 +11,18 @@ import {
   Images,
   Users,
   X,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
+import { supabase } from "../lib/supabaseClient";
 
-/*
-|--------------------------------------------------------------------------
-| GALLERY DATA
-|--------------------------------------------------------------------------
-| Add genuine exhibition photographs here.
-|
-| Example:
-| {
-|   id: "visit-001",
-|   image: "/gallery/visitor-group-01.jpg",
-|   title: "A day at the retrospective",
-|   caption: "Visitors exploring the exhibition.",
-|   date: "15 November 2026",
-|   category: "Group Visits",
-| }
-|
-| Categories:
-| - Recent Visits
-| - Group Visits
-| - Visitor Moments
-|
-| This structure can later be replaced with data from your backend.
-|--------------------------------------------------------------------------
-*/
-
-const galleryItems = [
-  // Add genuine visitor photographs here.
-];
+const BUCKET = "gallery-images";
+const SIGNED_URL_DURATION = 60 * 60;
 
 const filters = [
-  "All Moments",
-  "Recent Visits",
-  "Group Visits",
-  "Visitor Moments",
+  "All Photographs",
+  "Exhibition Moments",
+  "Visitor Experiences",
 ];
 
 const fadeUp = {
@@ -74,18 +50,34 @@ function SectionLabel({ children, light = false }) {
   return (
     <div className="mb-5 flex items-center gap-3">
       <span
-        className={`h-px w-8 ${light ? "bg-[#D0A36B]" : "bg-[#A77B45]"
-          }`}
+        className={`h-px w-8 ${
+          light ? "bg-[#D0A36B]" : "bg-[#A77B45]"
+        }`}
       />
 
       <span
-        className={`text-[10px] font-semibold uppercase tracking-[0.25em] ${light ? "text-[#D0A36B]" : "text-[#A77B45]"
-          }`}
+        className={`text-[10px] font-semibold uppercase tracking-[0.25em] ${
+          light ? "text-[#D0A36B]" : "text-[#A77B45]"
+        }`}
       >
         {children}
       </span>
     </div>
   );
+}
+
+/* --------------------------------------------------------------------------
+   DATE FORMAT
+--------------------------------------------------------------------------- */
+
+function formatDate(date) {
+  if (!date) return "";
+
+  return new Date(date).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 /* --------------------------------------------------------------------------
@@ -117,7 +109,7 @@ function PhotoCard({ item, onClick }) {
       </div>
 
       <div className="border-b border-neutral-200 py-5">
-        <div className="mb-2 flex items-center justify-between gap-4">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
           <span className="text-[9px] font-semibold uppercase tracking-[0.2em] text-[#A77B45]">
             {item.category}
           </span>
@@ -136,6 +128,12 @@ function PhotoCard({ item, onClick }) {
         {item.caption && (
           <p className="mt-2 text-sm leading-6 text-neutral-500">
             {item.caption}
+          </p>
+        )}
+
+        {item.photoCredit && (
+          <p className="mt-3 text-[10px] uppercase tracking-[0.12em] text-neutral-400">
+            Photo credit: {item.photoCredit}
           </p>
         )}
       </div>
@@ -232,6 +230,12 @@ function PhotoLightbox({
             </p>
           )}
 
+          {item.photoCredit && (
+            <p className="mt-3 text-xs text-white/45">
+              Photo credit: {item.photoCredit}
+            </p>
+          )}
+
           <p className="mt-3 text-xs text-white/40">
             {activeIndex + 1} / {items.length}
           </p>
@@ -258,28 +262,37 @@ function PhotoLightbox({
 --------------------------------------------------------------------------- */
 
 function EmptyGallery({ filter }) {
-  const isGroup = filter === "Group Visits";
+  const isAll = filter === "All Photographs";
+  const isVisitor = filter === "Visitor Experiences";
+
+  const heading = isVisitor
+    ? "Visitor experiences will appear here."
+    : isAll
+      ? "The gallery is growing."
+      : "Exhibition moments will appear here.";
+
+  const description = isVisitor
+    ? "Photographs of visitors, school trips, group visits and shared experiences will appear here as they are added and published."
+    : isAll
+      ? "Photographs from the retrospective will appear here as the exhibition team adds and publishes them."
+      : "Photographs of Fela, archival materials, exhibition displays and installations will appear here.";
 
   return (
     <div className="col-span-full flex flex-col items-center justify-center border border-dashed border-neutral-300 bg-[#F8F7F5] px-6 py-20 text-center">
       <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-white text-[#A77B45]">
-        {isGroup ? <Users size={25} /> : <Images size={25} />}
+        <Images size={25} />
       </div>
 
       <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.25em] text-[#A77B45]">
-        {isGroup ? "Shared experiences" : "The gallery"}
+        {filter}
       </p>
 
       <h3 className="max-w-lg font-serif text-3xl text-neutral-900 md:text-4xl">
-        {isGroup
-          ? "Group visits will be featured here."
-          : "Moments from the exhibition will appear here."}
+        {heading}
       </h3>
 
       <p className="mt-4 max-w-md text-sm leading-7 text-neutral-500">
-        {isGroup
-          ? "Photographs of schools, organisations, friends and other visiting groups will be added as the exhibition welcomes more visitors."
-          : "This space is reserved for genuine photographs of visitors, exhibition experiences and memorable moments from the retrospective."}
+        {description}
       </p>
     </div>
   );
@@ -290,33 +303,111 @@ function EmptyGallery({ filter }) {
 --------------------------------------------------------------------------- */
 
 function GalleryCollection() {
-  const [activeFilter, setActiveFilter] = useState("All Moments");
+  const [galleryItems, setGalleryItems] = useState([]);
+  const [activeFilter, setActiveFilter] = useState("All Photographs");
   const [activeIndex, setActiveIndex] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const filteredItems =
-    activeFilter === "All Moments"
-      ? galleryItems
-      : galleryItems.filter(
-        (item) => item.category === activeFilter
+  const loadGallery = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const { data, error: queryError } = await supabase
+        .from("gallery_items")
+        .select(
+          "id, title, description, photo_credit, category, storage_path, image_url, display_order, created_at"
+        )
+        .eq("is_published", true)
+        .order("display_order", { ascending: true })
+        .order("created_at", { ascending: false });
+
+      if (queryError) throw queryError;
+
+      const items = await Promise.all(
+        (data || []).map(async (item) => {
+          let imageUrl = item.image_url || "";
+
+          if (item.storage_path) {
+            const { data: signedData, error: signedError } =
+              await supabase.storage
+                .from(BUCKET)
+                .createSignedUrl(
+                  item.storage_path,
+                  SIGNED_URL_DURATION
+                );
+
+            if (signedError) {
+              console.error(
+                `Could not generate image URL for ${item.title}:`,
+                signedError
+              );
+
+              return null;
+            }
+
+            imageUrl = signedData?.signedUrl || "";
+          }
+
+          if (!imageUrl) return null;
+
+          return {
+            id: item.id,
+            title: item.title,
+            caption: item.description || "",
+            photoCredit: item.photo_credit || "",
+            category: item.category || "Exhibition Moments",
+            image: imageUrl,
+            date: formatDate(item.created_at),
+          };
+        })
       );
 
-  const closeLightbox = () => setActiveIndex(null);
+      setGalleryItems(items.filter(Boolean));
+      setActiveIndex(null);
+    } catch (err) {
+      console.error("Gallery loading error:", err);
 
-  const showPrevious = () => {
+      setError(
+        "We couldn't load the gallery photographs. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadGallery();
+  }, [loadGallery]);
+
+  const filteredItems =
+    activeFilter === "All Photographs"
+      ? galleryItems
+      : galleryItems.filter(
+          (item) => item.category === activeFilter
+        );
+
+  const closeLightbox = useCallback(() => {
+    setActiveIndex(null);
+  }, []);
+
+  const showPrevious = useCallback(() => {
     setActiveIndex((current) =>
-      current === null
+      current === null || filteredItems.length === 0
         ? null
-        : (current - 1 + filteredItems.length) % filteredItems.length
+        : (current - 1 + filteredItems.length) %
+          filteredItems.length
     );
-  };
+  }, [filteredItems.length]);
 
-  const showNext = () => {
+  const showNext = useCallback(() => {
     setActiveIndex((current) =>
-      current === null
+      current === null || filteredItems.length === 0
         ? null
         : (current + 1) % filteredItems.length
     );
-  };
+  }, [filteredItems.length]);
 
   return (
     <section
@@ -338,13 +429,14 @@ function GalleryCollection() {
           </div>
 
           <p className="max-w-md text-sm leading-7 text-neutral-500">
-            Browse photographs and experiences from the retrospective.
-            Select a collection to explore different moments from the
-            exhibition.
+            Browse photographs and experiences from the
+            retrospective. Each image offers a glimpse into the
+            exhibition and its growing archive.
           </p>
         </div>
 
         {/* FILTER BUTTONS */}
+
         <div className="mb-10 flex flex-wrap gap-2">
           {filters.map((filter) => {
             const isActive = activeFilter === filter;
@@ -357,10 +449,12 @@ function GalleryCollection() {
                   setActiveFilter(filter);
                   setActiveIndex(null);
                 }}
-                className={`rounded-full border px-5 py-3 text-xs font-semibold transition-all duration-300 ${isActive
+                aria-pressed={isActive}
+                className={`rounded-full border px-5 py-3 text-xs font-semibold transition-all duration-300 ${
+                  isActive
                     ? "border-neutral-950 bg-neutral-950 text-white"
                     : "border-neutral-300 bg-white text-neutral-800 hover:border-neutral-950 hover:bg-neutral-100 hover:text-neutral-950"
-                  }`}
+                }`}
               >
                 {filter}
               </button>
@@ -368,25 +462,70 @@ function GalleryCollection() {
           })}
         </div>
 
-        <motion.div
-          key={activeFilter}
-          variants={stagger}
-          initial="hidden"
-          animate="visible"
-          className="grid grid-cols-1 gap-x-7 gap-y-10 sm:grid-cols-2 lg:grid-cols-3"
-        >
-          {filteredItems.length > 0 ? (
-            filteredItems.map((item, index) => (
-              <PhotoCard
-                key={item.id}
-                item={item}
-                onClick={() => setActiveIndex(index)}
-              />
-            ))
-          ) : (
-            <EmptyGallery filter={activeFilter} />
-          )}
-        </motion.div>
+        {/* LOADING */}
+
+        {loading && (
+          <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
+            <Loader2
+              size={30}
+              className="animate-spin text-[#A77B45]"
+            />
+
+            <p className="mt-5 text-sm text-neutral-500">
+              Loading exhibition photographs...
+            </p>
+          </div>
+        )}
+
+        {/* ERROR */}
+
+        {!loading && error && (
+          <div className="flex min-h-[280px] flex-col items-center justify-center border border-neutral-200 bg-[#F8F7F5] px-6 text-center">
+            <Images size={30} className="text-[#A77B45]" />
+
+            <h3 className="mt-5 font-serif text-2xl text-neutral-950">
+              Something went wrong.
+            </h3>
+
+            <p className="mt-3 max-w-md text-sm leading-7 text-neutral-500">
+              {error}
+            </p>
+
+            <button
+              type="button"
+              onClick={loadGallery}
+              disabled={loading}
+              className="mt-6 inline-flex items-center gap-2 bg-neutral-950 px-6 py-3 text-xs font-semibold uppercase tracking-wider text-white transition-colors hover:bg-[#A77B45]"
+            >
+              <RefreshCw size={15} />
+              Try again
+            </button>
+          </div>
+        )}
+
+        {/* PHOTOGRAPH GRID */}
+
+        {!loading && !error && (
+          <motion.div
+            key={activeFilter}
+            variants={stagger}
+            initial="hidden"
+            animate="visible"
+            className="grid grid-cols-1 gap-x-7 gap-y-10 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {filteredItems.length > 0 ? (
+              filteredItems.map((item, index) => (
+                <PhotoCard
+                  key={item.id}
+                  item={item}
+                  onClick={() => setActiveIndex(index)}
+                />
+              ))
+            ) : (
+              <EmptyGallery filter={activeFilter} />
+            )}
+          </motion.div>
+        )}
 
         <PhotoLightbox
           items={filteredItems}
@@ -432,22 +571,24 @@ function GroupVisits() {
           </h2>
 
           <p className="mt-7 max-w-lg text-sm leading-8 text-neutral-600">
-            The retrospective welcomes groups interested in exploring
-            Fela's life, music, cultural influence and enduring legacy
-            together.
+            The retrospective welcomes groups interested in
+            exploring Fela's life, music, cultural influence and
+            enduring legacy together.
           </p>
 
           <p className="mt-4 max-w-lg text-sm leading-8 text-neutral-600">
             Whether you are visiting with a school, an organisation,
-            friends or family, the exhibition offers an opportunity to
-            learn, reflect and experience the story together.
+            friends or family, the exhibition offers an opportunity
+            to learn, reflect and experience the story together.
           </p>
 
           <Link
             to="/visit"
             className="mt-8 inline-flex min-h-12 items-center justify-center gap-3 bg-neutral-950 px-6 py-4 text-xs font-semibold uppercase tracking-[0.15em] !text-white transition-colors hover:bg-[#A77B45] hover:!text-white"
           >
-            <span className="!text-white">Book a group visit</span>
+            <span className="!text-white">
+              Book a group visit
+            </span>
             <ArrowUpRight size={16} className="!text-white" />
           </Link>
         </motion.div>
@@ -491,8 +632,9 @@ function GroupVisits() {
             />
 
             <p className="text-xs leading-6 text-neutral-500">
-              Advance booking is available for both individual visitors
-              and groups. Please use the visit page to make your booking.
+              Advance booking is available for both individual
+              visitors and groups. Please use the visit page to
+              make your booking.
             </p>
           </div>
         </motion.div>
@@ -523,8 +665,8 @@ function GalleryClosing() {
         </h2>
 
         <p className="mx-auto mt-6 max-w-xl text-sm leading-8 text-white/60">
-          Explore the story behind the photographs and discover the life,
-          music, ideas and legacy of Fela Anikulapo-Kuti.
+          Explore the story behind the photographs and discover
+          the life, music, ideas and legacy of Fela Anikulapo-Kuti.
         </p>
 
         <div className="mt-10 flex flex-col justify-center gap-3 sm:flex-row">
@@ -532,7 +674,9 @@ function GalleryClosing() {
             to="/exhibition"
             className="inline-flex min-h-12 items-center justify-center gap-3 bg-white px-7 py-4 text-xs font-semibold uppercase tracking-[0.15em] !text-black transition-colors hover:bg-[#D0A36B] hover:!text-neutral-950"
           >
-            <span className="!text-black">Explore the exhibition</span>
+            <span className="!text-black">
+              Explore the exhibition
+            </span>
             <ArrowUpRight size={16} className="!text-black" />
           </Link>
 
@@ -543,6 +687,7 @@ function GalleryClosing() {
             <span className="!text-white group-hover:!text-neutral-950">
               Book your visit
             </span>
+
             <ArrowRight
               size={16}
               className="!text-white group-hover:!text-neutral-950"
@@ -562,7 +707,8 @@ export default function Gallery() {
   return (
     <MotionConfig reducedMotion="user">
       <main className="min-h-screen bg-white text-neutral-950">
-        {/* EDITORIAL INTRODUCTION — NO HERO IMAGE */}
+        {/* EDITORIAL INTRODUCTION */}
+
         <section className="relative overflow-hidden border-b border-neutral-200 bg-[#F8F7F5]">
           <div className="mx-auto max-w-7xl px-5 pb-20 pt-24 md:px-10 md:pb-28 md:pt-32">
             <motion.div
@@ -591,19 +737,21 @@ export default function Gallery() {
                 className="mt-10 grid gap-8 border-t border-neutral-300 pt-8 md:grid-cols-2 md:gap-16"
               >
                 <p className="max-w-xl text-base leading-8 text-neutral-700">
-                  Every exhibition creates moments that deserve to be
-                  remembered. This gallery brings together photographs
-                  from the Fela Anikulapo-Kuti retrospective, capturing
-                  the people, experiences and shared discoveries that
-                  make the exhibition special.
+                  Every exhibition creates moments that deserve
+                  to be remembered. This gallery brings together
+                  photographs from the Fela Anikulapo-Kuti
+                  retrospective, capturing the people, experiences
+                  and shared discoveries that make the exhibition
+                  special.
                 </p>
 
                 <div className="flex flex-col justify-between gap-6">
                   <p className="max-w-lg text-sm leading-7 text-neutral-500">
-                    From individual visitors to school trips and group
-                    experiences, this is a growing collection of moments
-                    from an exhibition celebrating the life and legacy
-                    of one of Africa's most influential musical voices.
+                    From individual visitors to school trips and
+                    group experiences, this is a growing collection
+                    of moments from an exhibition celebrating the
+                    life and legacy of one of Africa's most
+                    influential musical voices.
                   </p>
 
                   <a
