@@ -17,6 +17,8 @@ import Credits from "./pages/Credits";
 import AdminLogin from "./pages/admin/AdminLogin";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AcceptInvitation from "./pages/admin/AcceptInvitation";
+import ForgotPassword from "./pages/admin/ForgotPassword";
+import ResetPassword from "./pages/admin/ResetPassword";
 
 function AppContent() {
   const location = useLocation();
@@ -40,9 +42,20 @@ function AppContent() {
 
           {/* Admin authentication */}
           <Route path="/admin/login" element={<AdminLogin />} />
+
           <Route
             path="/admin/accept-invitation"
             element={<AcceptInvitation />}
+          />
+
+          <Route
+            path="/admin/forgot-password"
+            element={<ForgotPassword />}
+          />
+
+          <Route
+            path="/admin/reset-password"
+            element={<ResetPassword />}
           />
 
           {/* Protected admin dashboard */}
